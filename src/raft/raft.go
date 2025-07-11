@@ -18,10 +18,10 @@ package raft
 //
 
 import (
-	// "6.824/labgob"
+	_ "6.824/labgob"
 	"6.824/labrpc"
-	// "bytes"
-	// "fmt"
+	_ "bytes"
+	_ "fmt"
 	"sync"
 	"sync/atomic"
 	"math/rand"
