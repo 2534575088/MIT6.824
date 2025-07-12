@@ -18,10 +18,10 @@ package raft
 //
 
 import (
-	_ "6.824/labgob"
+	"6.824/labgob"
 	"6.824/labrpc"
-	_ "bytes"
-	_ "fmt"
+	"bytes"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"math/rand"
@@ -170,12 +170,13 @@ func (rf *Raft) GetState() (int, bool) {
 func (rf *Raft) persist() {
 	// Your code here (2C).
 	// Example:
-	// w := new(bytes.Buffer)
-	// e := labgob.NewEncoder(w)
-	// e.Encode(rf.xxx)
-	// e.Encode(rf.yyy)
-	// data := w.Bytes()
-	// rf.persister.SaveRaftState(data)
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+	e.Encode(rf.currentTerm)
+	e.Encode(rf.votedFor)
+	e.Encode(rf.logs)
+	data := w.Bytes()
+	rf.persister.SaveRaftState(data)
 }
 
 
@@ -188,17 +189,20 @@ func (rf *Raft) readPersist(data []byte) {
 	}
 	// Your code here (2C).
 	// Example:
-	// r := bytes.NewBuffer(data)
-	// d := labgob.NewDecoder(r)
-	// var xxx
-	// var yyy
-	// if d.Decode(&xxx) != nil ||
-	//    d.Decode(&yyy) != nil {
-	//   error...
-	// } else {
-	//   rf.xxx = xxx
-	//   rf.yyy = yyy
-	// }
+	r := bytes.NewBuffer(data)
+	d := labgob.NewDecoder(r)
+	var currentTerm int
+	var votedFor int
+	var logs []LogEntry
+	if d.Decode(&currentTerm) != nil ||
+	    d.Decode(&votedFor) != nil ||
+		d.Decode(&logs) != nil {
+		fmt.Println("decode error")
+	} else {
+	  rf.currentTerm = currentTerm
+	  rf.votedFor = votedFor
+	  rf.logs = logs
+	}
 }
 
 
@@ -277,6 +281,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		rf.status = Follower
 		rf.currentTerm = args.Term
 		rf.votedFor = -1 // 新任期开始，重置 votedFor
+		rf.persist() // (2C) Persist state change
 	}
 
 	/*
@@ -307,6 +312,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		reply.VoteGranted = true
 		// 授予投票后，重置选举计时器，表示有活跃的选举在进行
 		rf.timer.Reset(rf.overtime)
+		rf.persist() // (2C) Persist state change
 	} else {
 		// 拒绝投票
 		reply.VoteState = Voted // 或 Expire (如果日志不新)
@@ -378,7 +384,7 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 		rf.status = Follower
 		rf.votedFor = -1
 		rf.timer.Reset(rf.overtime) // 转换为 Follower 时重置计时器
-		// rf.persist() // 2C: 状态改变需要持久化
+		rf.persist() // 2C: 状态改变需要持久化
 		return
 	}
 
@@ -447,6 +453,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	// 返回的是 1-based 索引，如果 logs[0] 是虚拟条目，则 len(rf.logs) 是下一个可用索引，所以 -1 是当前新条目的索引
 	index = len(rf.logs) - 1 
 	term = rf.currentTerm
+	rf.persist() // (2C) Persist state change
 
 	return index, term, isLeader
 }
@@ -501,7 +508,7 @@ func (rf *Raft) ticker() {
 				// Candidate: 开始新一轮选举
 				rf.currentTerm += 1
 				rf.votedFor = rf.me // 投票给自己
-				// rf.persist() // 2C: 状态改变需要持久化
+				rf.persist() // 2C: 状态改变需要持久化
 
 				votedCount := 1 // 统计自身的票数
 
@@ -719,6 +726,7 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 		rf.status = Follower
 		rf.votedFor = -1
 		rf.timer.Reset(rf.overtime)
+		rf.persist()
 		return
 	}
 
@@ -772,7 +780,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
-	
+
 	if rf.killed() {
 		reply.AppState = AppKilled
 		reply.Term = rf.currentTerm
@@ -793,7 +801,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	if args.Term > rf.currentTerm { // 如果 Leader 的任期更高，更新自身任期
 		rf.currentTerm = args.Term
 		rf.votedFor = -1 // 新任期重置 votedFor
-		// rf.persist() // 2C: 状态改变需要持久化
+		rf.persist() // 2C: 状态改变需要持久化
 	}
 	// 无论任期是否更高，只要是有效的 Leader 发来的 RPC，就重置计时器
 	rf.votedFor = args.LeaderId // 记录 Leader ID
@@ -848,6 +856,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 			rf.logs = rf.logs[:args.PrevLogIndex+1+newEntryIdx]
 			// 追加 Leader 发送的新条目
 			rf.logs = append(rf.logs, args.Entries[newEntryIdx:]...)
+			rf.persist() // (2C) Persist state change
 		}
 	}
 
