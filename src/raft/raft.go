@@ -75,12 +75,12 @@ type ApplyMsg struct {
 
 const (
 	// MoreVoteTime MinVoteTime 定义随机生成投票过期时间范围:(MoreVoteTime+MinVoteTime~MinVoteTime)
-	MoreVoteTime = 100
-	MinVoteTime = 75
+	MoreVoteTime = 20
+	MinVoteTime = 15
 
 	// HeartbeatSleep 心脏休眠时间,要注意的是，这个时间要比选举低，才能建立稳定心跳机制
-	HeartbeatSleep = 35
-	AppliedSleep = 15
+	HeartbeatSleep = 12
+	AppliedSleep = 3
 )
 
 
